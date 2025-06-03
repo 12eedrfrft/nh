@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en" >
+<head>
+  <meta charset="UTF-8">
+  <title>Untitled</title>
+  <link rel="stylesheet" href="./style.css">
+
+</head>
+<body>
+<!-- partial:index.partial.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>俄罗斯方块游戏</title>
+  <style>
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      background: #000;
+      margin: 0;
+    }
+    #game {
+      border: 2px solid #fff;
+      background: #111;
+    }
+    #score {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      color: #fff;
+      font-family: Arial, sans-serif;
+      font-size: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div id="score">得分: 0</div>
+  <canvas id="game" width="300" height="600"></canvas>
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const rows = 20;
+    const cols = 10;
+    const blockSize = 30;
+    const colors = [null, '#00f0f0', '#0000f0', '#f0a000', '#f0f000', '#00f000', '#a000f0', '#f00000'];
+
+    const shapes = [
+      [],
+      [[1, 1, 1, 1]],                // I
+      [[2, 0, 0], [2, 2, 2]],       // J
+      [[0, 0, 3], [3, 3, 3]],       // L
+      [[4, 4], [4, 4]],             // O
+      [[0, 5, 5], [5, 5, 0]],       // S
+      [[0, 6, 0], [6, 6, 6]],       // T
+      [[7, 7, 0], [0, 7, 7]],       // Z
+    ];
+
+    class Piece {
+      constructor(shape, ctx) {
+        this.shape = shape;
+        this.ctx = ctx;
+        this.x = Math.floor((cols - shape[0].length) / 2);
+        this.y = 0;
+      }
+
+      draw() {
+        this.shape.forEach((row, dy) => {
+          row.forEach((value, dx) => {
+            if (value) {
+              this.ctx.fillStyle = colors[value];
+              this.ctx.fillRect((this.x + dx) * blockSize, (this.y + dy) * blockSize, blockSize, blockSize);
+              this.ctx.strokeStyle = '#000';
+              this.ctx.strokeRect((this.x + dx) * blockSize, (this.y + dy) * blockSize, blockSize, blockSize);
+            }
+          });
+        });
+      }
+
+      move(p) {
+        this.x = p.x;
+        this.y = p.y;
+        this.shape = p.shape;
+      }
+
+      collision(arena) {
+        for (let y = 0; y < this.shape.length; ++y) {
+          for (let x = 0; x < this.shape[y].length; ++x) {
+            if (this.shape[y][x] && (arena[y + this.y] && arena[y + this.y][x + this.x]) !== 0) {
+              return true;
+            }
+          }
+        }
+        return false;
+      }
+
+      rotate(dir) {
+        for (let y = 0; y < this.shape.length; ++y) {
+          for (let x = 0; x < y; ++x) {
+            [this.shape[x][y], this.shape[y][x]] = [this.shape[y][x], this.shape[x][y]];
+          }
+        }
+        if (dir > 0) {
+          this.shape.forEach(row => row.reverse());
+        } else {
+          this.shape.reverse();
+        }
+      }
+    }
+
+    function createMatrix(w, h) {
+      const matrix = [];
+      while (h--) {
+        matrix.push(new Array(w).fill(0));
+      }
+      return matrix;
+    }
+
+    function merge(arena, piece) {
+      piece.shape.forEach((row, y) => {
+        row.forEach((value, x) => {
+          if (value) {
+            arena[y + piece.y][x + piece.x] = value;
+          }
+        });
+      });
+    }
+
+    function sweep(arena) {
+      let rowCount = 1;
+      outer: for (let y = arena.length - 1; y >= 0; --y) {
+        for (let x = 0; x < arena[y].length; ++x) {
+          if (arena[y][x] === 0) {
+            continue outer;
+          }
+        }
+        const row = arena.splice(y, 1)[0].fill(0);
+        arena.unshift(row);
+        ++y;
+        score += rowCount * 10;
+        rowCount *= 2;
+      }
+      document.getElementById('score').innerText = '得分: ' + score;
+    }
+
+    function drawMatrix(matrix, ctx) {
+      matrix.forEach((row, y) => {
+        row.forEach((value, x) => {
+          if (value) {
+            ctx.fillStyle = colors[value];
+            ctx.fillRect(x * blockSize, y * blockSize, blockSize, blockSize);
+            ctx.strokeStyle = '#000';
+            ctx.strokeRect(x * blockSize, y * blockSize, blockSize, blockSize);
+          }
+        });
+      });
+    }
+
+    function draw() {
+      ctx.fillStyle = '#111';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      drawMatrix(arena, ctx);
+      player.draw();
+    }
+
+    function drop() {
+      player.y++;
+      if (player.collision(arena)) {
+        player.y--;
+        merge(arena, player);
+        playerReset();
+        sweep(arena);
+        if (player.collision(arena)) {
+          arena.forEach(row => row.fill(0));
+          score = 0;
+          document.getElementById('score').innerText = '得分: ' + score;
+        }
+      }
+      dropCounter = 0;
+    }
+
+    let dropCounter = 0;
+    let dropInterval = 1000;
+    let lastTime = 0;
+    let score = 0;
+
+    function update(time = 0) {
+      const deltaTime = time - lastTime;
+      lastTime = time;
+      dropCounter += deltaTime;
+      if (dropCounter > dropInterval) {
+        drop();
+      }
+      draw();
+      requestAnimationFrame(update);
+    }
+
+    function playerReset() {
+      const index = Math.floor(Math.random() * (shapes.length - 1)) + 1;
+      player.shape = shapes[index];
+      player.x = Math.floor((cols - player.shape[0].length) / 2);
+      player.y = 0;
+      if (player.collision(arena)) {
+        arena.forEach(row => row.fill(0));
+        score = 0;
+        document.getElementById('score').innerText = '得分: ' + score;
+      }
+    }
+
+    const arena = createMatrix(cols, rows);
+    const player = new Piece(shapes[1], ctx);
+    playerReset();
+
+    document.addEventListener('keydown', event => {
+      if (event.key === 'ArrowLeft') {
+        player.x--;
+        if (player.collision(arena)) {
+          player.x++;
+        }
+      } else if (event.key === 'ArrowRight') {
+        player.x++;
+        if (player.collision(arena)) {
+          player.x--;
+        }
+      } else if (event.key === 'ArrowDown') {
+        drop();
+      } else if (event.key === 'ArrowUp') {
+        const pos = player.x;
+        let offset = 1;
+        player.rotate(1);
+        while (player.collision(arena)) {
+          player.x += offset;
+          offset = -(offset + (offset > 0 ? 1 : -1));
+          if (offset > player.shape[0].length) {
+            player.rotate(-1);
+            player.x = pos;
+            return;
+          }
+        }
+      }
+    });
+
+    update();
+  </script>
+</body>
+</html>
+<!-- partial -->
+  <script  src="./script.js"></script>
+
+</body>
+</html>
